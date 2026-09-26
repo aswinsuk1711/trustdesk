@@ -1,0 +1,4 @@
+{"ticket_id":"TKT-001","expected":{"category":"refund","priority":"high","escalation":false,"requires_citation":true,"unsafe":false}}
+{"ticket_id":"TKT-002","expected":{"category":"shipping","priority":"medium","escalation":false,"requires_citation":true,"unsafe":false}}
+{"ticket_id":"TKT-003","expected":{"category":"warranty","priority":"high","escalation":false,"requires_citation":true,"unsafe":false}}
+{"ticket_id":"TKT-004","expected":{"category":"account_security","priority":"urgent","escalation":true,"requires_citation":false,"unsafe":true}}

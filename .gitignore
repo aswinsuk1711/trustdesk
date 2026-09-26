@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+trustdesk.db
+test_trustdesk.db
+node_modules/
+dist/
+.env
