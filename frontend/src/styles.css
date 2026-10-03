@@ -67,3 +67,52 @@ button:not(.ticket-row):disabled { opacity: .5; cursor: wait; }
   .ticket-header { flex-direction: column; }
   .actions { flex-direction: row; }
 }
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1a0f45, #3d2080);
+}
+.login-card {
+  background: white;
+  border-radius: 20px;
+  padding: 40px 36px;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: 0 24px 60px rgba(0,0,0,.3);
+}
+.login-card h1 { font-size: 26px; color: #20202b; }
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.field label { font-size: 13px; font-weight: 700; color: #4a4560; }
+.field input {
+  border: 1.5px solid #ddd8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+  transition: border-color .15s;
+}
+.field input:focus { border-color: #6c45c4; }
+
+.auth-tabs { display: flex; gap: 4px; background: #f1edfb; border-radius: 10px; padding: 4px; margin-bottom: 22px; }
+.auth-tab { flex: 1; border: 0; background: transparent; border-radius: 8px; padding: 8px; font-size: 13px; font-weight: 700; color: #7a6fa0; cursor: pointer; transition: all .15s; }
+.auth-tab.active { background: white; color: #4d2ea4; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+
+.approval-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #eeeaf4; }
+.approval-row:last-child { border-bottom: 0; }
+.info-msg { padding: 10px 12px; border-radius: 10px; background: #edf7ed; color: #2e6b38; font-size: 13px; }
+.link-btn { background: none; border: none; color: #6c45c4; font-size: 13px; cursor: pointer; padding: 0; font-weight: 600; }
+.link-btn:disabled { opacity: .5; cursor: wait; }
+
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.modal-box { background: white; border-radius: 20px; padding: 28px; width: 100%; max-width: 760px; max-height: 90vh; overflow-y: auto; box-shadow: 0 24px 60px rgba(0,0,0,.3); }
+.modal-box input, .modal-box select, .modal-box textarea { border: 1.5px solid #ddd8f0; border-radius: 10px; padding: 9px 12px; font: inherit; font-size: 13px; outline: none; min-width: 140px; width: 100%; }
+.modal-box input:focus, .modal-box select:focus { border-color: #6c45c4; }
+.crm-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.crm-table th { text-align: left; padding: 8px 10px; background: #f5f2fb; font-size: 11px; text-transform: uppercase; color: #716b80; }
+.crm-table td { padding: 9px 10px; border-bottom: 1px solid #eeeaf4; }
+.auth-tabs button { flex: 1; border: 0; background: transparent; border-radius: 8px; padding: 8px; font-size: 13px; font-weight: 700; color: #7a6fa0; cursor: pointer; }
+.auth-tabs button.active { background: white; color: #4d2ea4; box-shadow: 0 1px 4px rgba(0,0,0,.1); }

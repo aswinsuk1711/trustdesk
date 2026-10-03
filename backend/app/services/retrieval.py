@@ -29,5 +29,7 @@ class RetrievalService:
             if score <= 0:
                 continue
             d = self.docs[idx]
+            if d.unsafe:  # never surface adversarial documents
+                continue
             hits.append(RetrievalHit(d.id, d.title, d.content, float(score)))
         return hits

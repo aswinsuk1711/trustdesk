@@ -9,6 +9,8 @@ from .retrieval import RetrievalService
 from .ai import get_ai_provider
 from .tools import ToolService
 
+REFUND_WINDOW_DAYS = 30
+WARRANTY_WINDOW_DAYS = 365
 
 CATEGORIES = ("shipping", "refund", "warranty", "billing", "account_security", "general")
 PRIORITIES = ("low", "medium", "high", "urgent")
@@ -46,7 +48,7 @@ class SupportService:
         category = self._category(text)
 
         urgent_words = ("fraud", "hacked", "unauthorized", "stolen", "security")
-        high_words = ("angry", "complaint", "urgent", "failed", "broken", "refund")
+        high_words = ("angry", "complaint", "urgent", "failed", "broken", "refund", "warranty", "defective")
         priority = "urgent" if any(x in text.lower() for x in urgent_words) else (
             "high" if any(x in text.lower() for x in high_words) else "medium"
         )
@@ -85,8 +87,44 @@ class SupportService:
         category = ticket.category or self._category(query)
 
         action = None
+        idem_key = None
+
         if category == "refund" and order and order.status in {"delivered", "completed"}:
-            action = "start_refund_review"
+            days_since_order = (ticket.created_at - order.ordered_at).days
+            if days_since_order <= REFUND_WINDOW_DAYS:
+                action = "start_refund_review"
+                idem_key = f"refund-{ticket.id}-auto"
+                existing = self.db.scalar(select(ToolCall).where(
+                    ToolCall.ticket_id == ticket.id, ToolCall.tool_name == action
+                ))
+                if not existing:
+                    self.tools.start_refund_review(
+                        self.db, ticket.id, idem_key, order.total
+                    )
+
+        elif category == "warranty" and order and order.status in {"delivered", "completed"}:
+            days_since_order = (ticket.created_at - order.ordered_at).days
+            if days_since_order <= WARRANTY_WINDOW_DAYS:
+                action = "create_replacement_order"
+                idem_key = f"replacement-{ticket.id}-auto"
+                existing = self.db.scalar(select(ToolCall).where(
+                    ToolCall.ticket_id == ticket.id, ToolCall.tool_name == action
+                ))
+                if not existing:
+                    self.tools.create_replacement_order(
+                        self.db, ticket.id, idem_key, order.product
+                    )
+
+        elif category == "shipping" and order:
+            action = "create_coupon"
+            idem_key = f"coupon-{ticket.id}-auto"
+            existing = self.db.scalar(select(ToolCall).where(
+                ToolCall.ticket_id == ticket.id, ToolCall.tool_name == action
+            ))
+            if not existing:
+                self.tools.create_coupon(
+                    self.db, ticket.id, idem_key, 10
+                )
 
         if not safe_message:
             draft = (
@@ -117,7 +155,11 @@ class SupportService:
                 f"Policy evidence:\n{combined_policy}"
             )
 
-            generated = self.ai.draft(system, user)
+            generated = ""
+            try:
+                generated = self.ai.draft(system, user)
+            except Exception:
+                pass
             if generated:
                 draft = generated
             else:

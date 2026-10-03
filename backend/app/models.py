@@ -1,8 +1,26 @@
 from datetime import datetime
-from sqlalchemy import DateTime, Float, Integer, String, Text, Boolean, UniqueConstraint
+from sqlalchemy import DateTime, Float, Integer, String, Text, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
+
+
+class User(Base):
+    __tablename__ = "users"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String, unique=True, index=True)
+    email: Mapped[str] = mapped_column(String, unique=True, index=True)
+    hashed_password: Mapped[str] = mapped_column(String)
+    role: Mapped[str] = mapped_column(String, default="agent")
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class OtpStore(Base):
+    __tablename__ = "otp_store"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String, index=True)
+    otp: Mapped[str] = mapped_column(String)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 class Customer(Base):

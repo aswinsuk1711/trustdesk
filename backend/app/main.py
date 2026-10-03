@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -5,10 +6,19 @@ from .database import Base, engine
 from .seed import seed
 from .api import router
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(engine)
+    seed()
+    yield
+
+
 app = FastAPI(
     title="TrustDesk API",
     version="1.0.0",
-    description="AI Support Operations Agent"
+    description="AI Support Operations Agent",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -18,12 +28,5 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-def startup():
-    Base.metadata.create_all(engine)
-    seed()
-
 
 app.include_router(router)

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-import json
 import httpx
+from google import genai
 
 from ..config import settings
 
@@ -34,7 +34,20 @@ class OpenAICompatibleProvider(AIProvider):
         return data["choices"][0]["message"]["content"]
 
 
+class GeminiProvider(AIProvider):
+    def draft(self, system: str, user: str) -> str:
+        client = genai.Client(api_key=settings.gemini_api_key)
+        response = client.models.generate_content(
+            model=settings.gemini_model,
+            contents=f"{system}\n\n{user}",
+        )
+        return response.text
+
+
 def get_ai_provider() -> AIProvider:
-    if settings.ai_provider.lower() == "openai" and settings.openai_api_key:
+    provider = settings.ai_provider.lower()
+    if provider == "gemini" and settings.gemini_api_key:
+        return GeminiProvider()
+    if provider == "openai" and settings.openai_api_key:
         return OpenAICompatibleProvider()
     return MockAIProvider()
