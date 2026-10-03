@@ -32,6 +32,9 @@ UNSAFE_MESSAGE = "Someone logged into my account and changed my password without
 
 
 def _ensure_admin():
+    from app.database import Base, engine
+
+    Base.metadata.create_all(engine)
     db = SessionLocal()
     try:
         if not db.scalar(select(User).where(User.username == ADMIN_USERNAME)):
@@ -52,8 +55,10 @@ def _ensure_user(username: str, password: str = ADMIN_PASSWORD) -> str:
     from jose import jwt
 
     from app.config import settings
+    from app.database import Base, engine
     from app.models import Customer
 
+    Base.metadata.create_all(engine)
     db = SessionLocal()
     try:
         user = db.scalar(select(User).where(User.username == username))
@@ -68,18 +73,19 @@ def _ensure_user(username: str, password: str = ADMIN_PASSWORD) -> str:
             db.add(user)
             db.commit()
             db.refresh(user)
+        role = user.role
         if not db.get(Customer, customer_id_for(username)):
             db.add(Customer(
                 id=customer_id_for(username),
                 name=username,
-                email=user.email,
+                email=f"{username}@test.com",
                 tier="standard",
             ))
             db.commit()
     finally:
         db.close()
 
-    payload = {"sub": username, "role": user.role, "exp": 9999999999}
+    payload = {"sub": username, "role": role, "exp": 9999999999}
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
@@ -151,6 +157,104 @@ def test_ticket_context_reflects_owner(client):
     assert body["customer"]["id"] == customer_id_for("ctxuser_a")
     assert body["customer"]["email"] == "ctxuser_a@test.com"
     assert body["order"] is None
+
+
+def test_cannot_file_ticket_for_another_customer(client):
+    """A caller-supplied customer_id must never override ticket ownership."""
+    victim_token = _ensure_user("victim_a")
+    attacker_token = _ensure_user("attacker_a")
+    attacker_headers = {"Authorization": f"Bearer {attacker_token}"}
+
+    res = client.post("/api/tickets", headers=attacker_headers, json={
+        "subject": "Impersonation attempt",
+        "message": "Attempting to file against another customer profile.",
+        "customer_id": customer_id_for("victim_a"),
+        "order_id": None,
+    })
+    assert res.status_code == 201
+    assert res.json()["customer_id"] == customer_id_for("attacker_a")
+
+    victim_tickets = client.get(
+        "/api/tickets", headers={"Authorization": f"Bearer {victim_token}"}
+    ).json()
+    assert res.json()["id"] not in [t["id"] for t in victim_tickets]
+
+
+def test_crm_only_exposes_own_records(client):
+    token = _ensure_user("crmscope_a")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    customers = client.get("/api/crm/customers", headers=headers).json()
+    assert [c["id"] for c in customers] == [customer_id_for("crmscope_a")]
+
+    order = client.post("/api/crm/orders", headers=headers, json={
+        "product": "Keyboard",
+        "status": "delivered",
+        "total": 2499.0,
+        "ordered_at": "2026-09-20T10:00:00",
+    })
+    assert order.status_code == 201
+    assert order.json()["customer_id"] == customer_id_for("crmscope_a")
+
+    orders = client.get("/api/crm/orders", headers=headers).json()
+    assert [o["id"] for o in orders] == [order.json()["id"]]
+
+
+def test_draft_never_returns_template_when_ai_fails(client, monkeypatch):
+    """An AI outage must escalate, not silently serve canned category text."""
+    from app.services import support as support_module
+
+    class BrokenProvider:
+        def draft(self, system: str, user: str) -> str:
+            raise RuntimeError("upstream unavailable")
+
+    monkeypatch.setattr(support_module, "get_ai_provider", lambda: BrokenProvider())
+
+    headers = auth(client)
+    ticket = raise_ticket(client, headers, REFUND_SUBJECT, REFUND_MESSAGE)
+    res = client.post(f"/api/tickets/{ticket['id']}/draft", headers=headers)
+    assert res.status_code == 200
+
+    body = res.json()
+    assert body["escalated"] is True
+    assert "refund review" not in body["draft"].lower()
+    assert "unable to generate" in body["draft"].lower()
+
+
+def test_draft_never_returns_template_when_ai_empty(client, monkeypatch):
+    """An empty model response must escalate rather than fall back to a template."""
+    from app.services import support as support_module
+
+    class EmptyProvider:
+        def draft(self, system: str, user: str) -> str:
+            return ""
+
+    monkeypatch.setattr(support_module, "get_ai_provider", lambda: EmptyProvider())
+
+    headers = auth(client)
+    ticket = raise_ticket(client, headers, SHIPPING_SUBJECT, SHIPPING_MESSAGE)
+    res = client.post(f"/api/tickets/{ticket['id']}/draft", headers=headers)
+    assert res.status_code == 200
+
+    body = res.json()
+    assert body["escalated"] is True
+    assert "shipping policy and order information" not in body["draft"].lower()
+    assert "unable to generate" in body["draft"].lower()
+
+
+def test_draft_uses_model_output_when_available(client, monkeypatch):
+    from app.services import support as support_module
+
+    class LiveProvider:
+        def draft(self, system: str, user: str) -> str:
+            return "Your refund is approved per KB-REFUND and will be processed."
+
+    monkeypatch.setattr(support_module, "get_ai_provider", lambda: LiveProvider())
+
+    headers = auth(client)
+    ticket = raise_ticket(client, headers, REFUND_SUBJECT, REFUND_MESSAGE)
+    body = client.post(f"/api/tickets/{ticket['id']}/draft", headers=headers).json()
+    assert body["draft"] == "Your refund is approved per KB-REFUND and will be processed."
 
 
 # ── Triage ──────────────────────────────────────────────────────────────────

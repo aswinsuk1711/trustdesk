@@ -126,6 +126,9 @@ class SupportService:
                     self.db, ticket.id, idem_key, 10
                 )
 
+        escalated = False
+        draft_error = ""
+
         if not safe_message:
             draft = (
                 "I can help with this request, but I can't process or disclose "
@@ -155,34 +158,24 @@ class SupportService:
                 f"Policy evidence:\n{combined_policy}"
             )
 
-            generated = ""
             try:
-                generated = self.ai.draft(system, user)
-            except Exception:
-                pass
+                generated = (self.ai.draft(system, user) or "").strip()
+            except Exception as exc:
+                generated = ""
+                draft_error = f"ai_unavailable: {type(exc).__name__}"
+
             if generated:
                 draft = generated
+                draft_error = ""
             else:
-                if category == "refund":
-                    draft = (
-                        "Thanks for contacting us about your refund. We reviewed the "
-                        "available order and refund policy. We can start a refund review "
-                        "for the order; a support specialist will complete the approval."
-                    )
-                elif category == "shipping":
-                    draft = (
-                        "Thanks for reaching out about your delivery. We reviewed the "
-                        "available shipping policy and order information. A support "
-                        "specialist can review the shipment status if the policy window "
-                        "does not resolve the issue."
-                    )
-                else:
-                    draft = (
-                        "Thanks for contacting support. Based on the available policy "
-                        "information, we can review your request and follow the applicable "
-                        "support procedure."
-                    )
-            escalated = ticket.escalation
+                # Never fabricate a reply: surface the failure and route to a human.
+                draft = (
+                    "I'm unable to generate a reply for this ticket right now. "
+                    "A support specialist will review it and respond shortly."
+                )
+                escalated = True
+                draft_error = draft_error or "ai_empty_response"
+            escalated = escalated or ticket.escalation
 
         trace = Trace(
             ticket_id=ticket.id,

@@ -67,32 +67,24 @@ def resend_otp(body: VerifyOtpRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/tickets", response_model=list[TicketOut])
-def list_tickets(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    return list(db.scalars(select(Ticket).order_by(Ticket.created_at.desc())).all())
+def list_tickets(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    customer_id = ensure_customer(db, current_user).id
+    return list(db.scalars(
+        select(Ticket)
+        .where(Ticket.customer_id == customer_id)
+        .order_by(Ticket.created_at.desc())
+    ).all())
 
 
 @router.post("/tickets", response_model=TicketOut, status_code=201)
 def create_ticket(body: TicketCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     from datetime import datetime, timezone
     import uuid
-    # Use provided customer_id or fall back to the logged-in user's customer
-    if body.customer_id:
-        customer = db.get(Customer, body.customer_id)
-        if not customer:
-            raise HTTPException(404, "Customer not found")
-        customer_id = body.customer_id
-    else:
-        customer_id = ensure_customer(db, current_user).id
-    # Validate order belongs to the customer
-    if body.order_id:
-        order = db.get(Order, body.order_id)
-        if not order or order.customer_id != customer_id:
-            raise HTTPException(400, "Order does not belong to this customer")
     ticket_id = f"TKT-{uuid.uuid4().hex[:6].upper()}"
     ticket = Ticket(
         id=ticket_id,
-        customer_id=customer_id,
-        order_id=body.order_id,
+        customer_id=ensure_customer(db, current_user).id,
+        order_id=None,
         subject=body.subject,
         message=body.message,
         created_at=datetime.now(timezone.utc).replace(tzinfo=None),
@@ -107,7 +99,8 @@ def _owned_ticket(db: Session, ticket_id: str, current_user: User) -> Ticket:
     ticket = db.get(Ticket, ticket_id)
     if not ticket:
         raise HTTPException(404, "Ticket not found")
-    # Allow access if ticket belongs to user's own customer OR any CRM customer they created
+    if ticket.customer_id != ensure_customer(db, current_user).id:
+        raise HTTPException(404, "Ticket not found")
     return ticket
 
 
@@ -187,9 +180,13 @@ def get_trace(ticket_id: str, db: Session = Depends(get_db), current_user: User 
 
 
 @router.get("/actions/pending", response_model=list[ActionOut])
-def pending_actions(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def pending_actions(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    customer_id = ensure_customer(db, current_user).id
+    owned = select(Ticket.id).where(Ticket.customer_id == customer_id)
     return list(db.scalars(
-        select(ToolCall).where(ToolCall.status == "pending").order_by(ToolCall.id.desc())
+        select(ToolCall)
+        .where(ToolCall.status == "pending", ToolCall.ticket_id.in_(owned))
+        .order_by(ToolCall.id.desc())
     ).all())
 
 
@@ -309,19 +306,18 @@ def latest_evaluation(db: Session = Depends(get_db), _: User = Depends(get_curre
 # ── CRM ──────────────────────────────────────────────────────────────────────
 
 @router.get("/crm/customers", response_model=list[CustomerOut])
-def list_customers(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    return list(db.scalars(select(Customer).order_by(Customer.id)).all())
+def list_customers(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    customer = ensure_customer(db, current_user)
+    return [customer]
 
 
 @router.post("/crm/customers", response_model=CustomerOut, status_code=201)
-def create_customer(body: CustomerCreate, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    import uuid
-    customer = Customer(
-        id=f"CUS-{uuid.uuid4().hex[:6].upper()}",
-        name=body.name,
-        email=body.email,
-        tier=body.tier,
-    )
+def create_customer(body: CustomerCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """A customer profile already exists per account, so this only updates it."""
+    customer = ensure_customer(db, current_user)
+    customer.name = body.name or customer.name
+    customer.email = body.email or customer.email
+    customer.tier = body.tier or customer.tier
     db.add(customer)
     db.commit()
     db.refresh(customer)
@@ -329,19 +325,20 @@ def create_customer(body: CustomerCreate, db: Session = Depends(get_db), _: User
 
 
 @router.get("/crm/orders", response_model=list[OrderOut])
-def list_orders(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    return list(db.scalars(select(Order).order_by(Order.id)).all())
+def list_orders(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    customer_id = ensure_customer(db, current_user).id
+    return list(db.scalars(
+        select(Order).where(Order.customer_id == customer_id).order_by(Order.id)
+    ).all())
 
 
 @router.post("/crm/orders", response_model=OrderOut, status_code=201)
-def create_order(body: OrderCreate, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def create_order(body: OrderCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     import uuid
-    customer = db.get(Customer, body.customer_id)
-    if not customer:
-        raise HTTPException(404, "Customer not found")
+    customer_id = ensure_customer(db, current_user).id
     order = Order(
         id=f"ORD-{uuid.uuid4().hex[:6].upper()}",
-        customer_id=body.customer_id,
+        customer_id=customer_id,
         product=body.product,
         status=body.status,
         total=body.total,

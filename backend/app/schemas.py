@@ -42,8 +42,6 @@ class TicketOut(BaseModel):
 class TicketCreate(BaseModel):
     subject: str = Field(min_length=3, max_length=200)
     message: str = Field(min_length=10, max_length=5000)
-    customer_id: str | None = None
-    order_id: str | None = None
 
 
 class ContextOut(BaseModel):
@@ -115,7 +113,6 @@ class CustomerOut(BaseModel):
 
 
 class OrderCreate(BaseModel):
-    customer_id: str
     product: str = Field(min_length=1, max_length=200)
     status: str = Field(default="delivered", pattern="^(pending|shipped|delivered|completed|cancelled)$")
     total: float = Field(gt=0)

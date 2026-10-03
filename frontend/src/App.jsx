@@ -14,7 +14,7 @@ function CRMPanel({ onClose }) {
   const [error, setError] = useState("");
 
   const [custForm, setCustForm] = useState({ name: "", email: "", tier: "standard" });
-  const [orderForm, setOrderForm] = useState({ customer_id: "", product: "", status: "delivered", total: "", ordered_at: "" });
+  const [orderForm, setOrderForm] = useState({ product: "", status: "delivered", total: "", ordered_at: "" });
 
   useEffect(() => {
     api.customers().then(setCustomers).catch(() => {});
@@ -26,7 +26,7 @@ function CRMPanel({ onClose }) {
     setLoading(true); setError("");
     try {
       const c = await api.createCustomer(custForm);
-      setCustomers((prev) => [...prev, c]);
+      setCustomers([c]);
       setCustForm({ name: "", email: "", tier: "standard" });
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -38,7 +38,7 @@ function CRMPanel({ onClose }) {
     try {
       const o = await api.createOrder({ ...orderForm, total: parseFloat(orderForm.total) });
       setOrders((prev) => [...prev, o]);
-      setOrderForm({ customer_id: "", product: "", status: "delivered", total: "", ordered_at: "" });
+      setOrderForm({ product: "", status: "delivered", total: "", ordered_at: "" });
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   };
@@ -66,7 +66,7 @@ function CRMPanel({ onClose }) {
                 <option value="gold">Gold</option>
                 <option value="platinum">Platinum</option>
               </select>
-              <button type="submit" disabled={loading}>Add Customer</button>
+              <button type="submit" disabled={loading}>Save Profile</button>
             </form>
             <table className="crm-table">
               <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Tier</th></tr></thead>
@@ -83,10 +83,6 @@ function CRMPanel({ onClose }) {
         {tab === "orders" && (
           <>
             <form onSubmit={submitOrder} style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-              <select value={orderForm.customer_id} onChange={(e) => setOrderForm({ ...orderForm, customer_id: e.target.value })} required>
-                <option value="">Select customer</option>
-                {customers.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.id})</option>)}
-              </select>
               <input placeholder="Product" value={orderForm.product} onChange={(e) => setOrderForm({ ...orderForm, product: e.target.value })} required />
               <select value={orderForm.status} onChange={(e) => setOrderForm({ ...orderForm, status: e.target.value })}>
                 <option value="pending">Pending</option>
@@ -121,18 +117,14 @@ function CRMPanel({ onClose }) {
 }
 
 function NewTicketForm({ onCreated, onCancel }) {
-  const [form, setForm] = useState({ subject: "", message: "", customer_id: "", order_id: "" });
-  const [customers, setCustomers] = useState([]);
+  const [form, setForm] = useState({ subject: "", message: "", order_id: "" });
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api.customers().then(setCustomers).catch(() => {});
     api.orders().then(setOrders).catch(() => {});
   }, []);
-
-  const filteredOrders = orders.filter((o) => !form.customer_id || o.customer_id === form.customer_id);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -141,8 +133,6 @@ function NewTicketForm({ onCreated, onCancel }) {
       const payload = {
         subject: form.subject,
         message: form.message,
-        customer_id: form.customer_id || undefined,
-        order_id: form.order_id || undefined,
       };
       const ticket = await api.createTicket(payload);
       onCreated(ticket);
@@ -159,14 +149,6 @@ function NewTicketForm({ onCreated, onCancel }) {
         </div>
         {error && <div className="error">{error}</div>}
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <select value={form.customer_id} onChange={(e) => setForm({ ...form, customer_id: e.target.value, order_id: "" })}>
-            <option value="">Select customer (optional)</option>
-            {customers.map((c) => <option key={c.id} value={c.id}>{c.name} — {c.email} ({c.tier})</option>)}
-          </select>
-          <select value={form.order_id} onChange={(e) => setForm({ ...form, order_id: e.target.value })} disabled={!form.customer_id}>
-            <option value="">Select order (optional)</option>
-            {filteredOrders.map((o) => <option key={o.id} value={o.id}>{o.id} — {o.product} ({o.status})</option>)}
-          </select>
           <input
             placeholder="Subject"
             value={form.subject}
@@ -331,7 +313,7 @@ function App() {
                 {ticket.priority && <Badge tone={ticket.priority}>{ticket.priority}</Badge>}
               </div>
               <div className="ticket-subject">{ticket.subject}</div>
-              <div className="muted">{ticket.customer_id}</div>
+              <div className="muted">{new Date(ticket.created_at).toLocaleDateString()}</div>
             </button>
           ))}
         </aside>
